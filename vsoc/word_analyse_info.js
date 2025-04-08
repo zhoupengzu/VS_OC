@@ -43,6 +43,10 @@ class WordsAnalyseKindType {
      * 方法
      */
     static method = 4;
+    /**
+     * 类
+     */
+    static class = 5;
 }
 /**
  * 方法类型
@@ -83,6 +87,24 @@ class WordsAnalyseKindDefineInfo extends WordsAnalyseKindBaseInfo {
     }
     print_description() {
         console.log(this.defineName);
+    }
+}
+/**
+ * 类
+ */
+class WordsAnalyseKindClassInfo extends WordsAnalyseKindBaseInfo {
+    constructor(class_name) {
+        super(WordsAnalyseKindType.class);
+        this.class_name = class_name;
+        this.super_name = "";
+        this.extension_name = "";
+        this.protocol_list = [];
+        this.var_list = [];
+        this.property_list = [];
+        this.method_list = [];
+    }
+    print_description() {
+        console.log(this.class_name);
     }
 }
 /**
@@ -142,14 +164,12 @@ class WordAnalyseFileInfo {
         this.file_name = "";
         this.position = 0;
         this.usefulKind = [];
+        this.is_system = false;
     }
     read_file_content(){
-        file.readFile(this.file_path, 'utf-8', (error, data)=>{
-            this.begin_analyse(data);
-        });
+        this.begin_analyse(file.readFileSync(this.file_path, 'utf-8'));
     }
     begin_analyse(data) {
-        console.log(this.file_path);
         while(this.position < data.length) {
             let char = data[this.position];
             if (checkIsWhiteSpace(char)) { // 以空格开始
@@ -211,10 +231,7 @@ class WordAnalyseFileInfo {
          * 获取类名
          */
         let class_name = "";
-        let protocol_list = null;
-        let super_class_name = "";
-        let extension_name = "";
-        let var_info = [];
+        
         while(this.position < data.length) {
             let char = data[this.position];
             if (char === ':' || char === '<' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+') {
@@ -226,25 +243,27 @@ class WordAnalyseFileInfo {
             }
             class_name += char;
         }
+        let class_info = new WordsAnalyseKindClassInfo(class_name);
+        this.usefulKind.push(class_info);
         this.skip_to_useful_char(data);
         let temp = data[this.position];
         if (temp === ':') { // 父类
-            super_class_name = this.begin_analyse_interface_supper(data);
+            this.begin_analyse_interface_supper(data, class_info);
         }
-        console.log(class_name + ' 父类：' + super_class_name);
+        // console.log(class_name + ' 父类：' + super_class_name);
         temp = data[this.position];
         if (temp === '(') { // 扩展
-            extension_name = this.begin_analyse_interface_extension(data);
+            this.begin_analyse_interface_extension(data, class_info);
         }
         temp = data[this.position];
         if (temp === '<') { // 协议
-            protocol_list = this.begin_analyse_interface_protocol(data);
+            this.begin_analyse_interface_protocol(data, class_info);
         }
         temp = data[this.position];
         if (temp === '{') { // 成员变量
-            var_info = this.begin_analyse_interface_var(data);
+            this.begin_analyse_interface_var(data, class_info);
         }
-        this.begin_analyse_interface_property_method(data);
+        this.begin_analyse_interface_property_method(data, class_info);
         this.begin_analyse_interface_end(data);
     }
     /**
@@ -256,7 +275,7 @@ class WordAnalyseFileInfo {
     /**
      * 属性和方法
      */
-    begin_analyse_interface_property_method(data) {
+    begin_analyse_interface_property_method(data, class_info) {
         this.skip_to_useful_char(data);
         if (this.position < data.length && data[this.position] === '/') {
             this.begin_analyse_comment(data);
@@ -266,8 +285,6 @@ class WordAnalyseFileInfo {
             this.begin_analyse_mark(data);
             this.skip_to_useful_char(data);
         }
-        let proper_list = [];
-        let method_list = [];
         while(this.position < data.length) {
             const char = data[this.position];
             if (char === '@') {
@@ -277,9 +294,11 @@ class WordAnalyseFileInfo {
                 this.skip_to_useful_char(data);
                 let proper_desc_list = [];
                 let proper_desc = "";
+                let proper_desc_has_ana = false;
                 let ana_desc = false;
                 let proper_other_list = [];
                 let proper_other = '';
+                let round_brackets = 0;
                 while(this.position < data.length) {
                     const proper = data[this.position];
                     if (proper === '/') {
@@ -298,15 +317,19 @@ class WordAnalyseFileInfo {
                         }
                         break;
                     }
-                    if (proper === '(' && ana_desc == false && proper_desc_list.length == 0) {
+                    if (proper === '(' && proper_desc_has_ana == false && proper_other_list.length == 0) { // 没解析过才解析修饰符
                         ana_desc = true;
                         continue;
                     }
                     
                     if (ana_desc) {
+                        proper_desc_has_ana = true;
                         if (proper === ',') {
-                            proper_desc_list.push(proper_desc);
+                            if (proper_desc.length > 0) {
+                                proper_desc_list.push(proper_desc);
+                            }
                             proper_desc = '';
+                            this.skip_to_useful_char(data);
                             continue;
                         }
                         if (proper === ')') {
@@ -321,21 +344,31 @@ class WordAnalyseFileInfo {
                         proper_desc += proper;
                         continue;
                     }
-                    if (checkIsWhiteSpace(proper) && proper_other.length > 0) {
+                    if (checkIsWhiteSpace(proper) && proper_other.length > 0 && round_brackets == 0) {
                         proper_other_list.push(proper_other);
                         proper_other = '';
                         continue;
                     }
-                    if (checkIsWhiteSpace(proper)) {
-                        proper_other = '';
-                        continue;
+                    if (proper === '(' || proper === '<') {
+                        round_brackets++;
+                    }
+                    if (proper === ')' || proper === '>') {
+                        round_brackets--;
                     }
                     proper_other += proper;
                 }
-                // console.log('属性:' + proper_other_list);
+                let result_list = [];
+                proper_other_list.forEach(element => {
+                    if (element.length == 0 || checkIsWhiteSpace(element) || element === 'const' || element === '__kindof' || element.startsWith('API_AVAILABLE(') || element.startsWith('API_UNAVAILABLE(') || element.startsWith('API_DEPRECATED_WITH_REPLACEMENT(') || element.startsWith('ios(') || element.startsWith('visionos(') || element.startsWith('NS_SWIFT_NAME(') || element === '_Nullable' || element === '_Nonnull' || element === '__nonnull' || element === '__nullable' || element.startsWith('MTR_DEPRECATED(') || element.startsWith('macos(') || element.startsWith('tvos(') || element.startsWith('watchos(') || element.startsWith('NS_REFINED_FOR_SWIFT') || element.startsWith('API_DEPRECATED(') || element.startsWith('__WATCHOS_UNAVAILABLE') || element.startsWith('__IOS_AVAILABLE(') || element.startsWith('__WATCHOS_AVAILABLE(') || element.startsWith('CF_RETURNS_NOT_RETAINED') || element.startsWith('NS_RETURNS_INNER_POINTER') || element.startsWith('MTR_AVAILABLE(') || element.startsWith('__IOS_UNAVAILABLE') || element.startsWith('UI_APPEARANCE_SELECTOR') || element.startsWith('UIKIT_AVAILABLE_TVOS_ONLY(') || element.startsWith('NS_SWIFT_UI_ACTOR') || element.startsWith('__WATCHOS_PROHIBITED') || element.startsWith('NS_AVAILABLE_IOS(') || element.startsWith('MP_API(') || element === 'NS_SWIFT_NONISOLATED' || element === '__TVOS_PROHIBITED' || element.startsWith('__TVOS_AVAILABLE(') || element === 'API_DEPRECATED_WITH_REPLACEMENT' || element === 'NS_UNAVAILABLE' || element === 'MTR_PROVISIONALLY_AVAILABLE' || element === 'NS_SWIFT_SENDABLE' || element.startsWith('IC_AVAILABLE(') || element.startsWith('IC_UNAVAILABLE(')) return;
+                    result_list.push(element);
+                });
+                // if (this.is_system && result_list.length > 3) {
+                //     console.log(this.file_path);
+                //     console.log('属性:' + result_list + ":" + result_list.length);
+                // }
                 this.skip_to_useful_char(data);
-                let proper_info = new WordsAnalyseKindPropertyInfo(proper_other_list);
-                proper_list.push(proper_info);
+                let proper_info = new WordsAnalyseKindPropertyInfo(result_list);
+                class_info.property_list.push(proper_info);
             } else if (char === '-' || char === '+') {
                 this.position++;
                 this.skip_to_useful_char(data);
@@ -387,10 +420,10 @@ class WordAnalyseFileInfo {
                 this.skip_to_useful_char(data);
                 if (char === '+') {
                     let method = new WordsAnalyseKindMethodInfo(method_name, WordsAnalyseKindMethodType.class_method);
-                    method_list.push(method);   
+                    class_info.method_list.push(method);   
                 } else {
                     let method = new WordsAnalyseKindMethodInfo(method_name, WordsAnalyseKindMethodType.instance_method);
-                    method_list.push(method);
+                    class_info.method_list.push(method);
                 }
             } else if (char === '/') {
                 this.begin_analyse_comment(data);
@@ -408,8 +441,7 @@ class WordAnalyseFileInfo {
     /**
      * 成员变量
      */
-    begin_analyse_interface_var(data) {
-        let vars_list = [];
+    begin_analyse_interface_var(data, class_info) {
         this.position++;
         this.skip_to_useful_char(data);
         let var_sep_arr = [];
@@ -445,7 +477,7 @@ class WordAnalyseFileInfo {
                 if (temp.length > 0) {
                     var_sep_arr.push(temp);
                 }
-                vars_list.push(var_sep_arr);
+                class_info.var_list.push(var_sep_arr);
                 temp = '';
                 var_sep_arr = [];
                 continue;
@@ -466,7 +498,7 @@ class WordAnalyseFileInfo {
     /**
      * 解析扩展
      */
-    begin_analyse_interface_extension(data) {
+    begin_analyse_interface_extension(data, class_info) {
         this.position++;
         this.skip_to_useful_char(data);
         let temp = '';
@@ -481,13 +513,13 @@ class WordAnalyseFileInfo {
             }
             temp += char;
         }
+        class_info.extension_name = temp;
         this.skip_to_useful_char(data);
-        return temp;
     }
     /**
      * 解析类的父类
      */
-    begin_analyse_interface_supper(data) {
+    begin_analyse_interface_supper(data, class_info) {
         this.position++;
         this.skip_to_useful_char(data);
         let temp = '';
@@ -511,14 +543,13 @@ class WordAnalyseFileInfo {
             }
             temp += char;
         }
+        class_info.super_name = temp;
         this.skip_to_useful_char(data);
-        return temp;
     }
     /**
      * 解析类的协议
      */
-    begin_analyse_interface_protocol(data) {
-        let protocol_list = [];
+    begin_analyse_interface_protocol(data, class_info) {
         this.position++;
         this.skip_to_useful_char(data);
         let temp = '';
@@ -526,21 +557,22 @@ class WordAnalyseFileInfo {
             let char = data[this.position];
             this.position++;
             if (char === '>') { // 协议结束
-                protocol_list.push(temp);
+                if (temp.length > 0) {
+                    class_info.protocol_list.push(temp);
+                }
                 break;
             }
             if (checkIsWhiteSpace(char) || char === '\n') {
                 continue;
             }
             if (char == ',') {
-                protocol_list.push(temp);
+                class_info.protocol_list.push(temp);
                 temp = '';
                 continue;
             }
             temp += char;
         }
         this.skip_to_useful_char(data);
-        return protocol_list;
     }
     /**
      * 解析类定义
@@ -566,7 +598,7 @@ class WordAnalyseFileInfo {
 
         // }
          else {
-            console.log('未知的kind_name:' + kind_name);
+            // console.log('未知的kind_name:' + kind_name);
             while(this.position < data.length) {
                 let char = data[this.position];
                 if (char === '\n') {
@@ -635,16 +667,24 @@ class WordAnalyseFileInfo {
             markType += char;
         }
         if (markType === '#define') {
+            this.position++;
             let key = "";
             let hasKey = false;
+            let round_brackets = 0;
             while(this.position < data.length) {
                 let char = data[this.position];
                 this.position++;
                 if (checkIsWhiteSpace(char) && hasKey == false) { // 过滤多余的空格
                     continue;
                 }
-                if (checkIsWhiteSpace(char)) {
+                if (checkIsWhiteSpace(char) && round_brackets == 0) {
                     break;
+                }
+                if (char === '(') {
+                    round_brackets += 1;
+                }
+                if (char === ')') {
+                    round_brackets -= 1;
                 }
                 hasKey = true;
                 key += char;
@@ -654,7 +694,7 @@ class WordAnalyseFileInfo {
             while(this.position < data.length) {
                 let char = data[this.position];
                 this.position++;
-                if (char === '\n' && preValue !== '\\') {
+                if (char === '\n' && (preValue !== '\\' || value.length == 0)) {
                     break;
                 }
                 if (!checkIsWhiteSpace(char)) { // 去除多行define之后的\之后的空格
@@ -673,7 +713,7 @@ class WordAnalyseFileInfo {
                 this.position++;
             }
         } else {
-            console.log('未处理内容Mark:' + markType);
+            // console.log('未处理内容Mark:' + markType);
         }
     }
     /**
@@ -694,7 +734,7 @@ class WordAnalyseFileInfo {
     begin_analyse_multi_comment(data) {
         this.position += 2;
         while (this.position < data.length) {
-            if(data[this.position] === '*' && (this.position + 1 < data.length && data[this.position] === '/')){
+            if(data[this.position] === '*' && (this.position + 1 < data.length && data[this.position + 1] === '/')){
                 break;
             }
             this.position++;
@@ -703,7 +743,7 @@ class WordAnalyseFileInfo {
     }
     print_decription() {
         this.usefulKind.forEach(element => {
-            element.print_decription();
+            element.print_description();
         });
     }
 }
@@ -713,31 +753,103 @@ class WordAnalyseInfo {
         this.type = WordsAnalyseType.frameworks;
         this.file_path = "";
         this.name="";
-        this.files = [];
     }
     get header_paths() {
         return path.join(this.file_path, "Headers");
     }
-    analyse_headers() {
+    analyse_headers(result_dic) {
         const headers_path = this.header_paths;
-        file.readdir(headers_path, (error, files)=>{
-            files.forEach((ele)=>{
-                if (ele.endsWith('.h') == false) return;
-                let file_info = new WordAnalyseFileInfo();
-                file_info.file_name = ele;
-                file_info.file_path = path.join(headers_path, ele);
-                file_info.read_file_content();
-                this.files.push(file_info);
-            });
+        try {
+            file.accessSync(headers_path, file.constants.F_OK);
+            const files = file.readdirSync(headers_path);
+            for (const ele of files) {
+                this.analyse_header(headers_path, ele, result_dic, true);
+            }
+        } catch (err) {
+
+        }
+    }
+    analyse_header(header_path, file, result_dic, is_system = false) {
+        if (file.endsWith('.h') == false) return;
+        let file_info = new WordAnalyseFileInfo();
+        file_info.file_name = file;
+        file_info.file_path = path.join(header_path, file);
+        file_info.is_system = is_system;
+        file_info.read_file_content();
+        result_dic[file_info.file_path] = file_info;
+    }
+}
+
+function checkMatchResult(vscode, words, result_dic) {
+    words = words.toLowerCase();
+    let result_list = [];
+    const keys = Object.keys(result_dic);
+    let unique_dic = {};
+    for (const key of keys) {
+        let file_info = result_dic[key];
+        file_info.usefulKind.forEach(element => {
+            if (element.kindType == WordsAnalyseKindType.define) {
+                if (file_info.is_system == true) {
+                    return;
+                }
+                const unique_key = element.defineName;
+                if (unique_dic[unique_key]) {
+                    return;
+                }
+                unique_dic[unique_key] = "1";
+                if (element.defineName.toLowerCase().startsWith(words)) {
+                    result_list.push(
+                        new vscode.CompletionItem(element.defineName, vscode.CompletionItemKind.Constant)
+                    )
+                }
+            } else if (element.kindType == WordsAnalyseKindType.class) {
+                if (element.class_name.toLowerCase().startsWith(words)) {
+                    const unique_key = element.class_name;
+                    if (unique_dic[unique_key]) {
+                        return;
+                    }
+                    unique_dic[unique_key] = "1";
+                    result_list.push(
+                        new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Class)
+                    )
+                }
+                element.method_list.forEach(method => {
+                    if (method.method_name.toLowerCase().startsWith(words)) {
+                        const unique_key = element.class_name + method.method_name;
+                        if (unique_dic[unique_key]) {
+                            return;
+                        }
+                        unique_dic[unique_key] = "1";
+                        result_list.push(
+                            new vscode.CompletionItem(method.method_name, vscode.CompletionItemKind.Function)
+                        )
+                    }
+                });
+                element.property_list.forEach(proper => {
+                    const temp = proper.proper_other_list[proper.proper_other_list.length-1];
+                    if (temp.toLowerCase().startsWith(words) || temp.toLowerCase().startsWith('*' + words)) {
+                        const unique_key = element.class_name + temp;
+                        if (unique_dic[unique_key]) {
+                            return;
+                        }
+                        unique_dic[unique_key] = "1";
+                        result_list.push(
+                            new vscode.CompletionItem(temp, vscode.CompletionItemKind.Property)
+                        )
+                    }
+                });
+            }
         });
     }
-    description() {
-        return "";
-    }
+    result_list.forEach((item, index) => {
+        item.sortText = `0${index}`;
+    });
+    return result_list;
 }
 
 module.exports = {
     WordsAnalyseKindBaseInfo,
     WordsAnalyseType,
-    WordAnalyseInfo
+    WordAnalyseInfo,
+    checkMatchResult
 }
