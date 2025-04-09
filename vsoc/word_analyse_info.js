@@ -47,6 +47,14 @@ class WordsAnalyseKindType {
      * 类
      */
     static class = 5;
+    /**
+     * 协议
+     */
+    static protocol = 6;
+    /**
+     * 枚举
+     */
+    static enum = 7;
 }
 /**
  * 方法类型
@@ -93,8 +101,8 @@ class WordsAnalyseKindDefineInfo extends WordsAnalyseKindBaseInfo {
  * 类
  */
 class WordsAnalyseKindClassInfo extends WordsAnalyseKindBaseInfo {
-    constructor(class_name) {
-        super(WordsAnalyseKindType.class);
+    constructor(class_name, kind_type) {
+        super(kind_type);
         this.class_name = class_name;
         this.super_name = "";
         this.extension_name = "";
@@ -142,6 +150,19 @@ class WordsAnalyseKindMethodInfo extends WordsAnalyseKindBaseInfo {
     }
     print_description() {
 
+    }
+}
+/**
+ * 枚举
+ */
+class WordsAnalyseKindEnumInfo extends WordsAnalyseKindBaseInfo {
+    constructor(enum_name, enum_list) {
+        super(WordsAnalyseKindType.enum);
+        this.enum_name = enum_name;
+        this.enum_item_list = enum_list;
+    }
+    print_description() {
+        console.log(this.enum_name);
     }
 }
 /**
@@ -198,25 +219,23 @@ class WordAnalyseFileInfo {
                 this.begin_analyse_class(data);
                 continue;
             }
-            // if (this.is_system == false && isAlpha(char)) {
-            //     let tempPosition = this.position;
-            //     let words = "";
-            //     while(tempPosition < data.length) {
-            //         const temp = data[tempPosition];
-            //         if (words.length == 0 && checkIsWhiteSpace(temp)) {
-            //             tempPosition++;
-            //             continue;
-            //         }
-            //         if (checkIsWhiteSpace(temp) || temp === '\n') {
-            //             break;
-            //         }
-            //         tempPosition++;
-            //         words += char;
-            //     }
-            //     if (words.length > 0 && !(words === 'NS_ASSUME_NONNULL_BEGIN' || words === 'NS_ASSUME_NONNULL_END' || words === 'typedef' || words === 'enum')) {
-            //         this.begin_analyse_to_Words(data);
-            //     }
-            // }
+            if (this.position + 7 < data.length && data.substring(this.position, this.position + 7) === 'typedef') {
+                this.position += 7;
+                this.skip_to_useful_char(data);
+                if (this.position + 7 < data.length && data.substring(this.position, this.position + 7) === 'NS_ENUM') {
+                    this.skip_to_useful_char(data);
+                    this.position += 7;
+                    this.begin_analyse_typedef_enum(data); 
+                    continue;
+                }
+                if (this.position + 10 < data.length && data.substring(this.position, this.position + 10) === 'NS_OPTIONS') {
+                    this.skip_to_useful_char(data);
+                    this.position += 10;
+                    this.begin_analyse_typedef_enum(data); 
+                    continue;
+                }
+                
+            }
             // this.begin_analyse_to_Words(data);
             // let temp = "";
             // while(this.position < data.length) {
@@ -235,41 +254,128 @@ class WordAnalyseFileInfo {
         }
     }
     /**
-     * C方法解析
+     * typedef解析
      */
-    begin_analyse_to_Words(data) {
-        let temp = data[this.position];
-        this.position++;
-        let pair_char = 0;
-        let result_list = [];
+    begin_analyse_typedef_enum(data) {
+        this.skip_to_useful_char(data);
+        let enum_name = "";
+        let begin_analyse_name = false;
+        let has_analyse_name = false;
+        let enum_item = "";
+        let begin_analyse_enum = false;
+        let enum_list = [];
+        let round_brackets = 0;
         while(this.position < data.length) {
             const char = data[this.position];
+            if (char === '/') {
+                this.begin_analyse_comment(data);
+                this.skip_to_useful_char(data);
+                continue;
+            }
+            if (char === '#') {
+                this.begin_analyse_mark(data);
+                this.skip_to_useful_char(data);
+                continue;
+            }
             this.position++;
-            if ((char === ';' || char === '{') && pair_char == 0) {
-                if(temp.length > 0) {
-                    result_list.push(temp);
+            if (char === ')') {
+                break;
+            }
+            if (begin_analyse_name && checkIsWhiteSpace(char)) {
+                break;
+            }
+            if (char === ',') {
+                if (has_analyse_name == false) {
+                    has_analyse_name = true;
+                    begin_analyse_name = true;
+                    this.skip_to_useful_char(data);
+                }
+                continue;
+            }
+            if (has_analyse_name == false) {
+                continue;
+            }
+            enum_name += char;
+        }
+        if (this.position >= data.length)return;
+        this.skip_to_useful_char(data);
+        let char = data[this.position];
+        if (char === '/') {
+            this.begin_analyse_comment(data);
+            this.skip_to_useful_char(data);
+        }
+        if (char === '#') {
+            this.begin_analyse_mark(data);
+            this.skip_to_useful_char(data);
+        }
+        while(this.position < data.length) {
+            const char = data[this.position];
+            if (char === '/') {
+                this.begin_analyse_comment(data);
+                this.skip_to_useful_char(data);
+                continue;
+            }
+            if (char === '#') {
+                this.begin_analyse_mark(data);
+                this.skip_to_useful_char(data);
+                continue;
+            }
+            this.position++;
+            if (char === '}') {
+                if (enum_item.length > 0) {
+                    enum_list.push(enum_item);
+                    enum_item = "";
                 }
                 break;
             }
-            if (checkIsWhiteSpace(char) && pair_char == 0 && temp.length > 0) {
-                result_list.push(temp);
-                temp = '';
+            if (char === '{') {
+                begin_analyse_enum = true;
                 continue;
             }
-            if (char === '(' || char === '<') {
-                pair_char++;
-            } else if (char === ')' || char === '>') {
-                pair_char--;
+            if (begin_analyse_enum == false) {
+                continue;
             }
-            temp += char;
-        }
-        for (let i = result_list.length - 1; i >= 0; i--) {
-            const c_str = result_list[i];
-            if (c_str.length > 0) {
-                this.otherKeywords[c_str] = '1';
-                break;
+            if (char === ',') { // 即将解析下一个枚举
+                if (begin_analyse_enum && enum_item.length > 0) {
+                    enum_list.push(enum_item);
+                    enum_item = "";
+                }
+                continue;
+            }
+            if (begin_analyse_enum && checkIsWhiteSpace(char) && enum_item.length == 0) {
+                this.skip_to_useful_char(data);
+                continue;
+            }
+            if (checkIsWhiteSpace(char) || char === '<') { // 当前单个枚举解析结束，可以直接遍历到，号或者}
+                this.skip_to_useful_char(data);
+                while(this.position < data.length) {
+                    const char = data[this.position];
+                    if ((char === ',' || char === '}') && round_brackets == 0) {
+                        break;
+                    }
+                    if (char === '/') {
+                        this.begin_analyse_comment(data);
+                        continue;
+                    }
+                    if (char === '#') {
+                        this.begin_analyse_mark(data);
+                        continue;
+                    }
+                    this.position++;
+                    if (char === '(') round_brackets++;
+                    if (char === ')') round_brackets--;
+                }
+                continue;
+            }
+            if (begin_analyse_enum) {
+                enum_item += char;
             }
         }
+        if (enum_name.length > 0) {
+            let enum_info = new WordsAnalyseKindEnumInfo(enum_name, enum_list);
+            this.usefulKind.push(enum_info);
+        }
+        this.skip_to_useful_char(data);
     }
     /**
      * 解析注释
@@ -288,7 +394,7 @@ class WordAnalyseFileInfo {
     /**
      * 解析interface
      */
-    begin_analyse_interface(data) {
+    begin_analyse_interface(data, kind_type) {
         /**
          * 获取类名
          */
@@ -296,7 +402,7 @@ class WordAnalyseFileInfo {
         
         while(this.position < data.length) {
             let char = data[this.position];
-            if (char === ':' || char === '<' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+') {
+            if (char === ':' || char === '<' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+' || char === ';' || char === '\n') {
                 break;
             }
             this.position++;
@@ -305,12 +411,29 @@ class WordAnalyseFileInfo {
             }
             class_name += char;
         }
-        let class_info = new WordsAnalyseKindClassInfo(class_name);
+        if (this.position < data.length && data[this.position] === ';') return;
+        // if (this.is_system && kind_type == WordsAnalyseKindType.protocol && class_name === 'UITableViewDelegate') {
+        //     // console.log(this.file_path);
+        //     console.log(class_name);
+        // }
+        let class_info = new WordsAnalyseKindClassInfo(class_name, kind_type);
         this.usefulKind.push(class_info);
         this.skip_to_useful_char(data);
         let temp = data[this.position];
+        if (temp === '#') {
+            this.begin_analyse_mark(data);
+        }
+        this.skip_to_useful_char(data);
+        if (temp === '/') {
+            this.begin_analyse_comment(data);
+        }
+        this.skip_to_useful_char(data);
         if (temp === ':') { // 父类
             this.begin_analyse_interface_supper(data, class_info);
+        }
+        this.skip_to_useful_char(data);
+        if (this.position > data.length) {
+            return;
         }
         // console.log(class_name + ' 父类：' + super_class_name);
         temp = data[this.position];
@@ -351,6 +474,12 @@ class WordAnalyseFileInfo {
             const char = data[this.position];
             if (char === '@') {
                 if (this.position+ 1 < data.length && data[this.position + 1] === 'e') break;
+                if (this.position+ 8 < data.length) {
+                    if (data.substring(this.position, 8) === 'optional') {
+                        this.position += 9;
+                        continue;
+                    }
+                }
                 this.skip_to_useful_char(data);
                 this.position += 9; // property
                 this.skip_to_useful_char(data);
@@ -652,14 +781,13 @@ class WordAnalyseFileInfo {
         }
         this.skip_whitespace(data);
         if (kind_name === '@interface') {
-            this.begin_analyse_interface(data);
+            this.begin_analyse_interface(data, WordsAnalyseKindType.class);
         } else if (kind_name === '@class' || kind_name === '@optional') {
             this.skip_to_return(data);
-        }
-        //  else if (kind_name === '@protocol') {
-
-        // }
-         else {
+        } else if (kind_name === '@protocol') {
+            this.begin_analyse_interface(data, WordsAnalyseKindType.protocol);
+        } else {
+            // console.log(this.file_path);
             // console.log('未知的kind_name:' + kind_name);
             while(this.position < data.length) {
                 let char = data[this.position];
@@ -865,18 +993,27 @@ function checkMatchResult(vscode, words, result_dic) {
                         new vscode.CompletionItem(element.defineName, vscode.CompletionItemKind.Constant)
                     )
                 }
-            } else if (element.kindType == WordsAnalyseKindType.class) {
+            } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol) {
+                
                 if (element.class_name.toLowerCase().startsWith(words)) {
                     const unique_key = element.class_name;
                     if (unique_dic[unique_key]) {
                         return;
                     }
                     unique_dic[unique_key] = "1";
-                    let class_info = new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Class);
-                    // class_info.detail = 'custom analyse class name';
-                    result_list.push(
-                        class_info
-                    )
+                    if (element.kindType == WordsAnalyseKindType.protocol) {
+                        let class_info = new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Interface);
+                        class_info.detail = '协议';
+                        result_list.push(
+                            class_info
+                        )
+                    } else {
+                        let class_info = new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Class);
+                        class_info.detail = '类';
+                        result_list.push(
+                            class_info
+                        )
+                    }
                 }
                 element.method_list.forEach(method => {
                     if (method.method_name.toLowerCase().startsWith(words)) {
@@ -885,8 +1022,14 @@ function checkMatchResult(vscode, words, result_dic) {
                             return;
                         }
                         unique_dic[unique_key] = "1";
+                        let method_info = new vscode.CompletionItem(method.method_name, vscode.CompletionItemKind.Function);
+                        if (element.kindType == WordsAnalyseKindType.protocol) {
+                            method_info.detail = "协议:" + element.class_name;
+                        } else {
+                            method_info.detail = "类：" + element.class_name;
+                        }
                         result_list.push(
-                            new vscode.CompletionItem(method.method_name, vscode.CompletionItemKind.Function)
+                            method_info
                         )
                     }
                 });
@@ -901,8 +1044,41 @@ function checkMatchResult(vscode, words, result_dic) {
                             return;
                         }
                         unique_dic[unique_key] = "1";
+                        let proper_info = new vscode.CompletionItem(temp, vscode.CompletionItemKind.Property);
+                        if (element.kindType == WordsAnalyseKindType.protocol) {
+                            proper_info.detail = "协议:" + element.class_name;
+                        } else {
+                            proper_info.detail = "类：" + element.class_name;
+                        }
                         result_list.push(
-                            new vscode.CompletionItem(temp, vscode.CompletionItemKind.Property)
+                            proper_info
+                        )
+                    }
+                });
+            } else if (element.kindType == WordsAnalyseKindType.enum) {
+                if (element.enum_name.toLowerCase().startsWith(words)) {
+                    const unique_key = element.enum_name;
+                    if (unique_dic[unique_key]) {
+                        return;
+                    }
+                    unique_dic[unique_key] = "1";
+                    let enum_info = new vscode.CompletionItem(element.enum_name, vscode.CompletionItemKind.Enum);
+                    enum_info.detail = '枚举';
+                    result_list.push(
+                        enum_info
+                    )
+                }
+                element.enum_item_list.forEach(enum_item => {
+                    if (enum_item.toLowerCase().startsWith(words)) {
+                        const unique_key = element.enum_name + enum_item;
+                        if (unique_dic[unique_key]) {
+                            return;
+                        }
+                        unique_dic[unique_key] = "1";
+                        let enum_info = new vscode.CompletionItem(enum_item, vscode.CompletionItemKind.Enum);
+                        enum_info.detail = "枚举值";
+                        result_list.push(
+                            enum_info
                         )
                     }
                 });
