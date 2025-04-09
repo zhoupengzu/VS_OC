@@ -27,18 +27,18 @@ function activate(context) {
 		// const files = file.readdirSync(path.join(folderPath));
 		findFileWithExtension(folderPath, "xcodeproj").then((found) => {
 			if (found) {
+				vscode.window.showInformationMessage('开始解析系统文件');
 				console.log(new Date().toLocaleString());
 				copy_headers.copy_system_frameworks(vscode, result_dic);
+				vscode.window.showInformationMessage('系统文件解析完成');
 				console.log(new Date().toLocaleString());
 				vscode.window.showInformationMessage('开始解析工程');
 				copy_headers.find_files_analyse(folderPath, 'h', result_dic).then(()=>{
 					console.log(new Date().toLocaleString());
 					has_analyse_finished = true;
-					if (waiting_analyse_file.length > 0) {
+					if (Object.keys(waiting_analyse_file).length > 0) {
 						console.log("有新文件变动");
-						has_analyse_finished = false;
-						// console.log(waiting_analyse_file);
-						has_analyse_finished = true;
+						gotoAnalyseNewChangeFile();
 					}
 					vscode.window.showInformationMessage('工程解析完成');
 				});
@@ -47,22 +47,26 @@ function activate(context) {
 			}
 		});
 	});
-	context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event)=>{
-		const document = event.document;
-        const changes = event.contentChanges;
+	// context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event)=>{
+	// 	const document = event.document;
+    //     const changes = event.contentChanges;
 
-        changes.forEach((change) => {
-            const range = change.range;
-            const text = change.text;
-            // console.log(`在文档 ${document.fileName} 中，位置 ${range.start.line}:${range.start.character} 输入了文本: ${text}`);
-			if (has_analyse_finished) {
-				has_analyse_finished = false;
-				// console.log(document.fileName);
-				has_analyse_finished = true;
-			} else {
-				waiting_analyse_file[document.fileName] = "1";
-			}
-        });
+    //     changes.forEach((change) => {
+	// 		if (document.fileName.endsWith('.h') == false) return;
+	// 		waiting_analyse_file[document.fileName] = "1";
+    //         // console.log(`在文档 ${document.fileName} 中，位置 ${range.start.line}:${range.start.character} 输入了文本: ${text}`);
+	// 		if (has_analyse_finished) {
+	// 			gotoAnalyseNewChangeFile();
+	// 		}
+    //     });
+	// }));
+	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document)=>{
+        if (document.fileName.endsWith('.h') == false) return;
+		waiting_analyse_file[document.fileName] = "1";
+		// console.log(`在文档 ${document.fileName} 中，位置 ${range.start.line}:${range.start.character} 输入了文本: ${text}`);
+		if (has_analyse_finished) {
+			gotoAnalyseNewChangeFile();
+		}
 	}));
 	context.subscriptions.push(vscode.languages.registerCompletionItemProvider('objective-c', {
 		provideCompletionItems(document, position, token, context) {
@@ -109,6 +113,20 @@ function activate(context) {
     // const selector = { scheme: 'file', language: 'objective-c' };
     // const disposable = vscode.languages.registerDocumentLinkProvider(selector, provider);
     // context.subscriptions.push(disposable);
+}
+
+function gotoAnalyseNewChangeFile() {
+	has_analyse_finished = false;
+	let file_keys = Object.keys(waiting_analyse_file);
+	for (const file_name of file_keys) {
+		const parsedPath = path.parse(file_name);
+		if (parsedPath.dir.length == 0 || parsedPath.base.length == 0) {
+			continue;
+		}
+		copy_headers.analyse_single_file(parsedPath.dir, parsedPath.base, result_dic);
+	}
+	has_analyse_finished = true;
+	waiting_analyse_file = {};
 }
 
 function checkIsWhiteSpace(char) {

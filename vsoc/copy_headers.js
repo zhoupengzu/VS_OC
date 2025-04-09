@@ -65,6 +65,14 @@ async function find_files_analyse(dir, ext, result_dic) {
     }
 }
 
+function analyse_single_file(dir, file_name, result_dic) {
+    let word_info = new words_analyse.WordAnalyseInfo();
+    word_info.type = words_analyse.WordsAnalyseType.frameworks;
+    word_info.name = file_name;
+    word_info.file_path = path.join(dir, file_name);
+    word_info.analyse_header(dir, file_name, result_dic);
+}
+
 function checkMatchResult(vscode, words, result_dic) {
     return words_analyse.checkMatchResult(vscode, words, result_dic);
 }
@@ -73,5 +81,6 @@ module.exports = {
     copy_system_frameworks,
     find_system_headfiles,
     find_files_analyse,
-    checkMatchResult
+    checkMatchResult,
+    analyse_single_file
 }

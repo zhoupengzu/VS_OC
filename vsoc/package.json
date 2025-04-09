@@ -13,12 +13,6 @@
     "*"
   ],
   "main": "./extension.js",
-  "contributes": {
-    "commands": [{
-      "command": "vsoc.helloWorld",
-      "title": "Hello World"
-    }]
-  },
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",

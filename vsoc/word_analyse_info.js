@@ -158,6 +158,10 @@ class WordsAnalyseType {
     static source_code = 'source_code';
 }
 
+function isAlpha(char) {
+    return /^[a-zA-Z]$/.test(char);
+}
+
 class WordAnalyseFileInfo {
     constructor(){
         this.file_path = "";
@@ -165,6 +169,7 @@ class WordAnalyseFileInfo {
         this.position = 0;
         this.usefulKind = [];
         this.is_system = false;
+        this.otherKeywords = {};
     }
     read_file_content(){
         this.begin_analyse(file.readFileSync(this.file_path, 'utf-8'));
@@ -193,6 +198,26 @@ class WordAnalyseFileInfo {
                 this.begin_analyse_class(data);
                 continue;
             }
+            // if (this.is_system == false && isAlpha(char)) {
+            //     let tempPosition = this.position;
+            //     let words = "";
+            //     while(tempPosition < data.length) {
+            //         const temp = data[tempPosition];
+            //         if (words.length == 0 && checkIsWhiteSpace(temp)) {
+            //             tempPosition++;
+            //             continue;
+            //         }
+            //         if (checkIsWhiteSpace(temp) || temp === '\n') {
+            //             break;
+            //         }
+            //         tempPosition++;
+            //         words += char;
+            //     }
+            //     if (words.length > 0 && !(words === 'NS_ASSUME_NONNULL_BEGIN' || words === 'NS_ASSUME_NONNULL_END' || words === 'typedef' || words === 'enum')) {
+            //         this.begin_analyse_to_Words(data);
+            //     }
+            // }
+            // this.begin_analyse_to_Words(data);
             // let temp = "";
             // while(this.position < data.length) {
             //     let char = data[this.position];
@@ -207,6 +232,43 @@ class WordAnalyseFileInfo {
             //     console.log('未处理内容:' + temp);
             // }
             this.position++;
+        }
+    }
+    /**
+     * C方法解析
+     */
+    begin_analyse_to_Words(data) {
+        let temp = data[this.position];
+        this.position++;
+        let pair_char = 0;
+        let result_list = [];
+        while(this.position < data.length) {
+            const char = data[this.position];
+            this.position++;
+            if ((char === ';' || char === '{') && pair_char == 0) {
+                if(temp.length > 0) {
+                    result_list.push(temp);
+                }
+                break;
+            }
+            if (checkIsWhiteSpace(char) && pair_char == 0 && temp.length > 0) {
+                result_list.push(temp);
+                temp = '';
+                continue;
+            }
+            if (char === '(' || char === '<') {
+                pair_char++;
+            } else if (char === ')' || char === '>') {
+                pair_char--;
+            }
+            temp += char;
+        }
+        for (let i = result_list.length - 1; i >= 0; i--) {
+            const c_str = result_list[i];
+            if (c_str.length > 0) {
+                this.otherKeywords[c_str] = '1';
+                break;
+            }
         }
     }
     /**
@@ -782,6 +844,7 @@ class WordAnalyseInfo {
 
 function checkMatchResult(vscode, words, result_dic) {
     words = words.toLowerCase();
+    console.log(words);
     let result_list = [];
     const keys = Object.keys(result_dic);
     let unique_dic = {};
@@ -809,8 +872,10 @@ function checkMatchResult(vscode, words, result_dic) {
                         return;
                     }
                     unique_dic[unique_key] = "1";
+                    let class_info = new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Class);
+                    // class_info.detail = 'custom analyse class name';
                     result_list.push(
-                        new vscode.CompletionItem(element.class_name, vscode.CompletionItemKind.Class)
+                        class_info
                     )
                 }
                 element.method_list.forEach(method => {
@@ -826,6 +891,9 @@ function checkMatchResult(vscode, words, result_dic) {
                     }
                 });
                 element.property_list.forEach(proper => {
+                    if (proper.proper_other_list.length == 0) {
+                        return;
+                    }
                     const temp = proper.proper_other_list[proper.proper_other_list.length-1];
                     if (temp.toLowerCase().startsWith(words) || temp.toLowerCase().startsWith('*' + words)) {
                         const unique_key = element.class_name + temp;
@@ -840,6 +908,19 @@ function checkMatchResult(vscode, words, result_dic) {
                 });
             }
         });
+        let other_keys = Object.keys(file_info.otherKeywords);
+        for (const other_key of other_keys) {
+            if (other_key.toLowerCase().indexOf(words) != -1) {
+                const unique_key = "word_analyse_info." + other_key;
+                if (unique_dic[unique_key]) {
+                    return;
+                }
+                unique_dic[unique_key] = "1";
+                result_list.push(
+                    new vscode.CompletionItem(other_key, vscode.CompletionItemKind.Text)
+                )
+            }
+        }
     }
     result_list.forEach((item, index) => {
         item.sortText = `0${index}`;
