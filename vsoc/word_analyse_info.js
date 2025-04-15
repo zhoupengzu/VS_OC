@@ -221,11 +221,14 @@ class WordAnalyseFileInfo {
         this.is_system = false;
         this.otherKeywords = {};
         this.line_number = 0;
+        this.sep_data_arr = [];
     }
     read_file_content(){
         this.begin_analyse(file.readFileSync(this.file_path, 'utf-8'));
     }
     begin_analyse(data) {
+        if (!data) return;
+        this.sep_data_arr = data.split('\n');
         while(this.position < data.length) {
             let char = data[this.position];
             if (checkIsWhiteSpace(char)) { // 以空格开始
@@ -265,7 +268,6 @@ class WordAnalyseFileInfo {
                     continue;
                 }
             }
-            this.updateLineNumber(data);
             this.position++;
         }
     }
@@ -281,6 +283,8 @@ class WordAnalyseFileInfo {
         let begin_analyse_enum = false;
         let enum_list = [];
         let round_brackets = 0;
+        this.updateLineNumber(data);
+        const begin_line = this.line_number;
         while(this.position < data.length) {
             const char = data[this.position];
             if (char === '/') {
@@ -389,6 +393,7 @@ class WordAnalyseFileInfo {
         }
         if (enum_name.length > 0) {
             let enum_info = new WordsAnalyseKindEnumInfo(enum_name, enum_list);
+            enum_info.line_number = begin_line;
             this.usefulKind.push(enum_info);
         }
         this.skip_to_useful_char(data);
@@ -415,10 +420,10 @@ class WordAnalyseFileInfo {
          * 获取类名
          */
         let class_name = "";
+        this.updateLineNumber(data);
         const begin_line = this.line_number;
         while(this.position < data.length) {
             let char = data[this.position];
-            this.updateLineNumber(data);
             if (char === ':' || char === '<' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+' || char === ';' || char === '\n') {
                 break;
             }
@@ -489,7 +494,6 @@ class WordAnalyseFileInfo {
             this.skip_to_useful_char(data);
         }
         while(this.position < data.length) {
-            const begin_line = this.line_number;
             const char = data[this.position];
             if (char === '@') {
                 if (this.position+ 1 < data.length && data[this.position + 1] === 'e') break;
@@ -499,6 +503,8 @@ class WordAnalyseFileInfo {
                         continue;
                     }
                 }
+                this.updateLineNumber(data);
+                let begin_line = this.line_number;
                 this.skip_to_useful_char(data);
                 this.position += 9; // property
                 this.skip_to_useful_char(data);
@@ -581,6 +587,8 @@ class WordAnalyseFileInfo {
                 proper_info.line_number = begin_line;
                 class_info.property_list.push(proper_info);
             } else if (char === '-' || char === '+') {
+                this.updateLineNumber(data);
+                let begin_line = this.line_number;
                 this.position++;
                 this.skip_to_useful_char(data);
                 let return_type = '';
@@ -599,11 +607,7 @@ class WordAnalyseFileInfo {
                         this.skip_to_useful_char(data);
                         continue;
                     }
-                    this.updateLineNumber(data);
                     this.position++;
-                    if (ana_return == false && return_type.length == 0) {
-                        this.skip_to_useful_char(data);
-                    }
                     if(method === '(' && ana_return == false && return_type.length == 0) {
                         ana_return = true;
                         continue;
@@ -650,7 +654,6 @@ class WordAnalyseFileInfo {
                 this.begin_analyse_mark(data);
                 this.skip_to_useful_char(data);
             } else {
-                this.updateLineNumber(data);
                 this.position++;
                 // console.log(this.file_path + ' 未知的方法字符:' + char);
             }
@@ -690,6 +693,7 @@ class WordAnalyseFileInfo {
         this.skip_to_useful_char(data);
         let var_sep_arr = [];
         let temp = '';
+        this.updateLineNumber(data);
         let begin_line = this.line_number;
         while(this.position < data.length) {
             let char = data[this.position];
@@ -706,7 +710,6 @@ class WordAnalyseFileInfo {
             if (char === '}') { // 成员变量结束
                 break;
             }
-            this.updateLineNumber(data);
             this.position++;
             if (char === '/n') {
                 continue;
@@ -754,7 +757,6 @@ class WordAnalyseFileInfo {
             if (char === ')') { // 扩展结束
                 break;
             }
-            this.updateLineNumber(data);
             this.position++;
             if (checkIsWhiteSpace(char) || char === '\n') {
                 continue;
@@ -785,7 +787,6 @@ class WordAnalyseFileInfo {
                 this.skip_to_useful_char(data);
                 continue;
             }
-            this.updateLineNumber(data);
             this.position++;
             if (checkIsWhiteSpace(char) || char === '\n') {
                 continue;
@@ -804,7 +805,6 @@ class WordAnalyseFileInfo {
         let temp = '';
         while(this.position < data.length) {
             let char = data[this.position];
-            this.updateLineNumber(data);
             this.position++;
             if (char === '>') { // 协议结束
                 if (temp.length > 0) {
@@ -833,7 +833,6 @@ class WordAnalyseFileInfo {
         while(this.position < data.length) {
             let char = data[this.position];
             if (checkIsWhiteSpace(char) || char === '\n') {
-                this.updateLineNumber(data);
                 break;
             }
             this.position++;
@@ -854,7 +853,6 @@ class WordAnalyseFileInfo {
             while(this.position < data.length) {
                 let char = data[this.position];
                 if (char === '\n') {
-                    this.updateLineNumber(data);
                     break;
                 }
                 this.position++;
@@ -869,10 +867,10 @@ class WordAnalyseFileInfo {
          * 获取类名
          */
         let class_name = "";
+        this.updateLineNumber(data);
         let begin_line = this.line_number;
         while(this.position < data.length) {
             let char = data[this.position];
-            this.updateLineNumber(data);
             if (char === '(' || char === '\n') {
                 break;
             }
@@ -917,8 +915,9 @@ class WordAnalyseFileInfo {
                 break;
             }
             this.position++;
-            begin_line = this.line_number;
             if (analyse_other_body == false && (char === '-' || char === '+')) {
+                this.updateLineNumber(data);
+                begin_line = this.line_number;
                 this.skip_to_useful_char(data);
                 let return_type = '';
                 let ana_return = false;
@@ -961,7 +960,6 @@ class WordAnalyseFileInfo {
                     }
                     if (begin_analyse_body) continue;
                     if (method === '\n') {
-                        this.updateLineNumber(data);
                         method = ' ';
                     }
                     if (!pre_space || !checkIsWhiteSpace(method)) {
@@ -1034,7 +1032,6 @@ class WordAnalyseFileInfo {
     skip_to_return(data) {
         while(this.position < data.length) {
             let char = data[this.position];
-            this.updateLineNumber(data);
             this.position++;
             if (char === '\n') {
                 break;
@@ -1070,7 +1067,6 @@ class WordAnalyseFileInfo {
         while(this.position < data.length) {
             let char = data[this.position];
             if (checkIsWhiteSpace(char) || char === '\n') {
-                this.updateLineNumber(data);
                 break;
             }
             this.position++;
@@ -1081,6 +1077,7 @@ class WordAnalyseFileInfo {
             let key = "";
             let hasKey = false;
             let round_brackets = 0;
+            this.updateLineNumber(data);
             const begin_line = this.line_number;
             while(this.position < data.length) {
                 let char = data[this.position];
@@ -1104,7 +1101,6 @@ class WordAnalyseFileInfo {
             let preValue = "";
             while(this.position < data.length) {
                 let char = data[this.position];
-                this.updateLineNumber(data);
                 this.position++;
                 if (char === '\n' && (preValue !== '\\' || value.length == 0)) {
                     break;
@@ -1121,7 +1117,6 @@ class WordAnalyseFileInfo {
             while(this.position < data.length) {
                 let char = data[this.position];
                 if (char === '\n') {
-                    this.updateLineNumber(data);
                     break;
                 }
                 this.position++;
@@ -1136,7 +1131,6 @@ class WordAnalyseFileInfo {
     begin_analyse_single_comment(data) {
         while (this.position < data.length) {
             if(data[this.position] === '\n'){
-                this.updateLineNumber(data);
                 break;
             }
             this.position++;
@@ -1157,8 +1151,16 @@ class WordAnalyseFileInfo {
         this.position += 2;
     }
     updateLineNumber(data) {
-        if (this.position < data.length && data[this.position] === '\n') {
+        let temp_length = 0;
+        let index = 0;
+        this.line_number = 0;
+        while (index < this.sep_data_arr.length) {
+            temp_length += (this.sep_data_arr[index].length + 1);
+            if (temp_length > this.position) {
+                break;
+            }
             this.line_number++;
+            index++;
         }
     }
     print_decription() {

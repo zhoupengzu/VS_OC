@@ -17,7 +17,7 @@
     "keybindings":[
       {
         "command": "extension.getClickcccccPositionAndContent",
-        "mac": "cmd+alt+j",
+        "mac": "cmd+j",
         "when": "editorTextFocus"
       }
     ]

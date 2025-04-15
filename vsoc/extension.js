@@ -104,7 +104,6 @@ function activate(context) {
 		}
 	});
 	context.subscriptions.push(watcher, createDisposable, deleteDisposable, changeDisposable);
-
     context.subscriptions.push(vscode.commands.registerCommand('extension.getClickcccccPositionAndContent', function () {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
