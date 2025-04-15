@@ -8,6 +8,7 @@ const fs = require('fs/promises');
 const path = require('path');
 let has_analyse_finished = false;
 let waiting_analyse_file = {};
+let waiting_delete_file = {};
 let result_dic = {};
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -33,9 +34,12 @@ function activate(context) {
 				vscode.window.showInformationMessage('系统文件解析完成');
 				console.log(new Date().toLocaleString());
 				vscode.window.showInformationMessage('开始解析工程');
-				copy_headers.find_files_analyse(folderPath, 'h', result_dic).then(()=>{
+				copy_headers.find_files_analyse(folderPath, result_dic).then(()=>{
 					console.log(new Date().toLocaleString());
 					has_analyse_finished = true;
+					if (Object.keys(waiting_delete_file).length > 0) {
+						gotoDeleteFile();
+					}
 					if (Object.keys(waiting_analyse_file).length > 0) {
 						console.log("有新文件变动");
 						gotoAnalyseNewChangeFile();
@@ -47,19 +51,6 @@ function activate(context) {
 			}
 		});
 	});
-	// context.subscriptions.push(vscode.workspace.onDidChangeTextDocument((event)=>{
-	// 	const document = event.document;
-    //     const changes = event.contentChanges;
-
-    //     changes.forEach((change) => {
-	// 		if (document.fileName.endsWith('.h') == false) return;
-	// 		waiting_analyse_file[document.fileName] = "1";
-    //         // console.log(`在文档 ${document.fileName} 中，位置 ${range.start.line}:${range.start.character} 输入了文本: ${text}`);
-	// 		if (has_analyse_finished) {
-	// 			gotoAnalyseNewChangeFile();
-	// 		}
-    //     });
-	// }));
 	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument((document)=>{
         if (document.fileName.endsWith('.h') == false) return;
 		waiting_analyse_file[document.fileName] = "1";
@@ -72,9 +63,10 @@ function activate(context) {
 		provideCompletionItems(document, position, token, context) {
 			// 获取当前行的文本
 			const lineText = document.lineAt(position.line).text;
+			
 			// 获取当前输入字符的前缀
 			const currentPrefix = lineText.substring(0, position.character);
-			return checkMatchResult(currentPrefix);
+			return checkMatchResult(currentPrefix, document.fileName);
 
 			// console.log('当前输入的字符:', currentPrefix);
 			// const completionItems = [
@@ -89,30 +81,100 @@ function activate(context) {
 			// return completionItems;
 		}
 	}));
-	// const provider = {
-    //     provideDocumentLinks(document, token) {
-    //         const links = [];
-    //         const regex = /appGetTopMostController/g;
-    //         let match;
-    //         while ((match = regex.exec(document.getText()))) {
-    //             const startPos = document.positionAt(match.index);
-    //             const endPos = document.positionAt(match.index + match[0].length);
-    //             const range = new vscode.Range(startPos, endPos);
-    //             const targetLine = 20;
-    //             if (targetLine < document.lineCount) {
-    //                 const target = new vscode.Location(document.uri, new vscode.Position(targetLine, 0));
-    //                 // 使用接受 Location 类型的构造函数
-    //                 const link = new vscode.DocumentLink(range, document.uri); 
-    //                 links.push(link);
-    //             }
-    //         }
-    //         return links;
-    //     }
-    // };
+	const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+	const createDisposable = watcher.onDidCreate((uri)=>{
+		if (uri.fsPath.endsWith('.h') == false && uri.fsPath.endsWith('.m')) return;
+		waiting_analyse_file[uri.fsPath] = "1";
+		if (has_analyse_finished) {
+			gotoAnalyseNewChangeFile();
+		}
+	});
+	const deleteDisposable = watcher.onDidDelete((uri)=>{
+		if (uri.fsPath.endsWith('.h') == false && uri.fsPath.endsWith('.m')) return;
+		waiting_delete_file[uri.fsPath] = "1";
+		if (has_analyse_finished) {
+			gotoDeleteFile();
+		}
+	});
+	const changeDisposable = watcher.onDidChange((uri)=>{
+		if (uri.fsPath.endsWith('.h') == false && uri.fsPath.endsWith('.m')) return;
+		waiting_analyse_file[uri.fsPath] = "1";
+		if (has_analyse_finished) {
+			gotoAnalyseNewChangeFile();
+		}
+	});
+	context.subscriptions.push(watcher, createDisposable, deleteDisposable, changeDisposable);
 
-    // const selector = { scheme: 'file', language: 'objective-c' };
-    // const disposable = vscode.languages.registerDocumentLinkProvider(selector, provider);
-    // context.subscriptions.push(disposable);
+    context.subscriptions.push(vscode.commands.registerCommand('extension.getClickcccccPositionAndContent', function () {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+
+            // 如果没有选中内容，获取当前行的内容
+			const position = editor.selection.active;
+			// 解析完整的内容
+			// const total_line = document.lineCount;
+			const curr_line = position.line;
+			const line = document.lineAt(curr_line);
+			const lineText = line.text;
+			const length = lineText.length;
+			let temp_index = position.character;
+			let temp_words = "";
+			while (temp_index >= 0) {
+				const char = lineText[temp_index];
+				temp_index--;
+				if (char === '(' || char === '{' || checkIsWhiteSpace(char) || !isAlphaNumeric(char)) break;
+				temp_words = char + temp_words;
+			}
+			temp_index = position.character + 1;
+			while (temp_index < lineText.length) {
+				const char = lineText[temp_index];
+				temp_index++;
+				if (char === '(' || char === '{' || checkIsWhiteSpace(char) || !isAlphaNumeric(char)) break;
+				temp_words += char;
+			}
+			const find_list = copy_headers.findMatchResultPosition(vscode, document.fileName, temp_words, result_dic);
+			if (find_list.length == 0) {
+				vscode.window.showInformationMessage('未找到匹配结果。');
+				return;
+			}
+			// 让用户选择一个匹配结果
+			const items = find_list.map(match => {
+				return {
+					label: `${match.label}`,
+					description: '',
+					detail: match.jumpTip,
+					filePath: match.filePath,
+					lineNumber: match.lineNumber
+				};
+			});
+	
+			vscode.window.showQuickPick(items, {
+				placeHolder: '请选择要跳转的位置'
+			}).then((selectedItem)=> {
+				if (selectedItem) {
+					const fileUri = vscode.Uri.file(selectedItem.filePath);
+					vscode.workspace.openTextDocument(fileUri)
+					   .then(doc => {
+							const position = new vscode.Position(selectedItem.lineNumber, 0);
+							const selection = new vscode.Selection(position, position);
+							return vscode.window.showTextDocument(doc, {
+								selection: selection,
+								preview: false
+							});
+						})
+				}
+			});
+        }
+    }));
+}
+
+function gotoDeleteFile() {
+	let file_keys = Object.keys(waiting_analyse_file);
+	for (const file_name of file_keys) {
+		result_dic.delete(file_name);
+	}
+	waiting_delete_file = {};
 }
 
 function gotoAnalyseNewChangeFile() {
@@ -137,7 +199,7 @@ function isAlphaNumeric(char) {
     return /^[a-zA-Z0-9]$/.test(char);
 }
 
-function checkMatchResult(words) {
+function checkMatchResult(words, file_path) {
 	let temp = '';
 	for (let i = words.length - 1; i >= 0; i--) {
 		const ch = words[i]; 
@@ -150,7 +212,7 @@ function checkMatchResult(words) {
 	if (result_dic.length == 0 || temp.length == 0) {
 		return [];
 	}
-	return copy_headers.checkMatchResult(vscode, temp, result_dic);
+	return copy_headers.checkMatchResult(vscode, file_path, temp, result_dic);
 }
 
 

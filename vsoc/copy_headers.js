@@ -40,14 +40,14 @@ async function find_system_headfiles(vscode, oriPath, result_dic) {
     }
 }
 
-async function find_files_analyse(dir, ext, result_dic) {
+async function find_files_analyse(dir, result_dic) {
     try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
             const fullPath = path.join(dir, entry.name);
             if (entry.name.indexOf('.') != -1) {
                 const paths = entry.name.split('.');
-                if (paths[paths.length - 1] === ext) {
+                if (paths[paths.length - 1] === 'h' || paths[paths.length - 1] === 'm') {
                     let word_info = new words_analyse.WordAnalyseInfo();
                     word_info.type = words_analyse.WordsAnalyseType.frameworks;
                     word_info.name = entry.name;
@@ -57,7 +57,7 @@ async function find_files_analyse(dir, ext, result_dic) {
                 }
             }
             if (entry.isDirectory()) {
-                await find_files_analyse(fullPath, ext, result_dic);
+                await find_files_analyse(fullPath, result_dic);
             }
         }
     } catch (err) {
@@ -73,8 +73,12 @@ function analyse_single_file(dir, file_name, result_dic) {
     word_info.analyse_header(dir, file_name, result_dic);
 }
 
-function checkMatchResult(vscode, words, result_dic) {
-    return words_analyse.checkMatchResult(vscode, words, result_dic);
+function checkMatchResult(vscode, file_path, words, result_dic) {
+    return words_analyse.checkMatchResult(vscode, file_path, words, result_dic);
+}
+
+function findMatchResultPosition(vscode, file_path, words, result_dic) {
+    return words_analyse.findMatchResultPosition(vscode, file_path, words, result_dic);
 }
 
 module.exports = {
@@ -82,5 +86,6 @@ module.exports = {
     find_system_headfiles,
     find_files_analyse,
     checkMatchResult,
-    analyse_single_file
+    analyse_single_file,
+    findMatchResultPosition
 }
