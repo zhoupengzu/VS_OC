@@ -47,7 +47,7 @@ async function find_files_analyse(dir, result_dic) {
             const fullPath = path.join(dir, entry.name);
             if (entry.name.indexOf('.') != -1) {
                 const paths = entry.name.split('.');
-                if (paths[paths.length - 1] === 'h' || paths[paths.length - 1] === 'm') {
+                if ((paths[paths.length - 1] === 'h' || paths[paths.length - 1] === 'm') && paths[0].length > 0) {
                     let word_info = new words_analyse.WordAnalyseInfo();
                     word_info.type = words_analyse.WordsAnalyseType.frameworks;
                     word_info.name = entry.name;
@@ -56,7 +56,7 @@ async function find_files_analyse(dir, result_dic) {
                     continue;
                 }
             }
-            if (entry.isDirectory()) {
+            if (entry.isDirectory() && entry.name.indexOf('.') == -1) {
                 await find_files_analyse(fullPath, result_dic);
             }
         }
