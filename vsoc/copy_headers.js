@@ -25,6 +25,7 @@ function copy_system_frameworks(vscode, result_dic) {
     //     find_system_headfiles(vscode, destPath);
 	// });
     find_system_headfiles(vscode, "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/System/Library", result_dic);
+    find_files_analyse("/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/usr/include", result_dic, true);
 }
 
 async function find_system_headfiles(vscode, oriPath, result_dic) {
@@ -40,7 +41,7 @@ async function find_system_headfiles(vscode, oriPath, result_dic) {
     }
 }
 
-async function find_files_analyse(dir, result_dic) {
+async function find_files_analyse(dir, result_dic, is_system=false) {
     try {
         const entries = await fs.readdir(dir, { withFileTypes: true });
         for (const entry of entries) {
@@ -52,12 +53,12 @@ async function find_files_analyse(dir, result_dic) {
                     word_info.type = words_analyse.WordsAnalyseType.frameworks;
                     word_info.name = entry.name;
                     word_info.file_path = fullPath;
-                    word_info.analyse_header(dir, entry.name, result_dic);
+                    word_info.analyse_header(dir, entry.name, result_dic, is_system);
                     continue;
                 }
             }
-            if (entry.isDirectory() && entry.name.indexOf('.') == -1) {
-                await find_files_analyse(fullPath, result_dic);
+            if (entry.isDirectory() && fullPath.indexOf("Pods/Headers") == -1 && entry.name.indexOf('.') == -1) {
+                await find_files_analyse(fullPath, result_dic, is_system);
             }
         }
     } catch (err) {

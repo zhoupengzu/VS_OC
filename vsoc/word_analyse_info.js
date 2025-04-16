@@ -167,10 +167,19 @@ class WordsAnalyseKindMethodInfo extends WordsAnalyseKindBaseInfo {
         if (method_name.length > 0) {
             let method_snippets = "";
             let snnips_list = method_name.split(':');
+            if (snnips_list.length == 1) {
+                this.snippet_method_name = method_name.replace(' ', '');
+                return;
+            }
+            snnips_list = snnips_list.slice(0, snnips_list.length - 1);
             let index = 0;
-            for (const element of snnips_list) {
+            for (let element of snnips_list) {
+                element = element.replace(' ', '');
                 if (index == 0) {
-                    method_snippets = method_snippets + element + ":$" + (index + 1) + " ";
+                    method_snippets = method_snippets + element + ":$" + (index + 1);
+                    if (index < snnips_list.length - 1) {
+                        method_snippets += " ";
+                    }
                 } else if (index == snnips_list.length - 1) {
                     
                 } else {
@@ -208,7 +217,7 @@ class WordsAnalyseKindEnumInfo extends WordsAnalyseKindBaseInfo {
 class WordsAnalyseKindCInfo extends WordsAnalyseKindBaseInfo {
     constructor(method_name, last_words) {
         super(WordsAnalyseKindType.c_method);
-        this.method_name = method_name;
+        this.method_name = method_name.replace('\n', ' ');
         this.method_keyword = "";
         this.snnipet_word = "";
         if (!last_words)return;
@@ -297,14 +306,17 @@ class WordAnalyseFileInfo {
                     break;
                 }
                 this.begin_analyse_comment(data);
+                this.skip_to_useful_char(data);
                 continue;
             }
             if (char.startsWith('#')) {// 一般为define宏定义，也有可能是空的、pragma、warning等
                 this.begin_analyse_mark(data);
+                this.skip_to_useful_char(data);
                 continue;
             }
             if (char.startsWith('@')) { // 一般为OC的类,可能为@class、@interface、@implement @end等
                 this.begin_analyse_class(data);
+                this.skip_to_useful_char(data);
                 continue;
             }
             if (this.position + 7 < data.length && data.substring(this.position, this.position + 7) === 'typedef') {
@@ -336,62 +348,63 @@ class WordAnalyseFileInfo {
                 }
                 continue;
             }
-            if (this.is_system == false && this.check_is_new_line_begin() && char !== '}') { // 如果是新行，则整行整行读取并分析
+            if (this.check_is_new_line_begin() && char !== '}') { // 如果是新行，则整行整行读取并分析
                 let round_brackets = 0;
-                let line_text = char;
+                let line_item = data[this.position];
                 this.position++;
                 let skip_to_end = false;
-                let line_text_list = [];
                 this.updateLineNumber(data);
                 let begin_line = this.line_number;
                 let line_item_list = [];
-                let line_item = "";
                 while(this.position < data.length) {
                     if (this.skip_comment_mark(data)) continue;
                     const temp = data[this.position];
                     if (temp === '@' && round_brackets == 0) {
-                        line_text = '';
                         break;
                     }
                     this.position++;
                     if (temp === '=') {
-                        if (this.check_words_is_system_keywords(line_text) && line_text_list.length == 0) {
-                            line_text = "";
+                        if (line_item.length > 0) {
+                            line_item_list.push(line_item);
+                        }
+                        if (line_item_list.length == 0) {
+                            line_item = "";
                             break;
                         }
                         skip_to_end = true;
                         break;
                     }
                     if (temp === '\n') {
-                        if (this.check_words_is_system_keywords(line_text) && line_text_list.length == 0) {
-                            line_text = "";
+                        if (line_item.length > 0 && this.check_words_is_system_keywords(line_item)) {
                             break;
                         }
-                        if (line_text.length > 0) {
-                            line_text_list.push(line_text);
-                        }
-                    }
-                    if (checkIsWhiteSpace(temp) && round_brackets == 0) {
-                        if (line_item.length > 0 && this.check_words_is_system_keywords(line_item) == false) {
+                        if (line_item.length > 0) {
                             line_item_list.push(line_item);
                         }
                         line_item = "";
+                        continue;
+                    }
+                    if (checkIsWhiteSpace(temp) && round_brackets == 0) {
+                        if (line_item.length > 0) {
+                            line_item_list.push(line_item);
+                        }
+                        line_item = "";
+                        continue;
                     }
                     if (temp === '{' && round_brackets == 0) {
                         skip_to_end = true;
-                        if (line_item.length > 0 && this.check_words_is_system_keywords(line_item) == false) {
+                        if (line_item.length > 0) {
                             line_item_list.push(line_item);
                         }
                         break;
                     }
                     
                     if (temp === ';' && round_brackets == 0) {
-                        if (line_item.length > 0 && this.check_words_is_system_keywords(line_item) == false) {
+                        if (line_item.length > 0) {
                             line_item_list.push(line_item);
                         }
                         break;
                     }
-                    line_text += temp;
                     line_item += temp;
                     if (temp === '(' || temp === '{' || temp === '[') round_brackets++;
                     if (temp === ')' || temp === '}' || temp === ']') round_brackets--;
@@ -409,8 +422,22 @@ class WordAnalyseFileInfo {
                         if (temp === ')' || temp === '}') round_brackets--;
                     }
                 }
-                if (line_text.length > 0) {
-                    let c_info = new WordsAnalyseKindCInfo(line_text, line_item_list[line_item_list.length - 1]);
+                let result_list = [];
+                line_item_list.forEach(element => {
+                    if (this.check_words_is_system_keywords(element)) return;
+                    result_list.push(element);
+                });
+                if (result_list.length > 0) {
+                    let methodName = "";
+                    for (let i = result_list.length - 1; i >= 0; i--) {
+                        let temp = result_list[i];
+                        temp = temp.replace(' ', '');
+                        if (temp.length > 0) {
+                            methodName = result_list[i];
+                            break;
+                        }
+                    }
+                    let c_info = new WordsAnalyseKindCInfo(result_list.join(''), methodName);
                     c_info.line_number = begin_line;
                     this.usefulKind.push(c_info);
                 }
@@ -649,22 +676,27 @@ class WordAnalyseFileInfo {
         let class_name = "";
         this.updateLineNumber(data);
         const begin_line = this.line_number;
+        let brackets = 0;
         while(this.position < data.length) {
             let char = data[this.position];
-            if (char === ':' || char === '<' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+' || char === ';' || char === '\n') {
+            if (char === ':' || char === '(' || char === '{' || char === '-' || char === '@' || char === '+' || char === ';' || char === '\n') {
                 break;
             }
             this.position++;
-            if (checkIsWhiteSpace(char) || char === '\n') {
+            if (char === '<') {
+                brackets++;
+                continue;
+            }
+            if (char === '>') {
+                brackets--;
+                continue;
+            }
+            if (checkIsWhiteSpace(char) || char === '\n' || brackets > 0) {
                 continue;
             }
             class_name += char;
         }
         if (this.position < data.length && data[this.position] === ';') return;
-        // if (this.is_system && kind_type == WordsAnalyseKindType.protocol && class_name === 'UITableViewDelegate') {
-        //     // console.log(this.file_path);
-        //     console.log(class_name);
-        // }
         let class_info = new WordsAnalyseKindClassInfo(class_name, kind_type);
         class_info.line_number = begin_line;
         this.usefulKind.push(class_info);
@@ -863,13 +895,34 @@ class WordAnalyseFileInfo {
                     }
                 }
                 // console.log('方法:' + method_name);
+                let method_name_list = [];
+                let temp_name = "";
+                let position = 0;
+                round_brackets = 0;
+                while (position < method_name.length) {
+                    const char = method_name[position];
+                    position++;
+                    if (checkIsWhiteSpace(char) && round_brackets == 0) {
+                        if(temp_name.length > 0 && this.check_words_is_system_keywords(temp_name) == false) {
+                            method_name_list.push(temp_name);
+                        }
+                        temp_name = "";
+                        continue;
+                    }
+                    temp_name += char;
+                    if (char === '(' || char === '<') round_brackets++;
+                    if (char === ')' || char === '>') round_brackets++;
+                }
+                if (temp_name.length > 0 && this.check_words_is_system_keywords(temp_name) == false) {
+                    method_name_list.push(temp_name);
+                }
                 this.skip_to_useful_char(data);
                 if (char === '+') {
-                    let method = new WordsAnalyseKindMethodInfo(method_name, WordsAnalyseKindMethodType.class_method);
+                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(''), WordsAnalyseKindMethodType.class_method);
                     method.line_number = begin_line;
                     class_info.method_list.push(method);
                 } else {
-                    let method = new WordsAnalyseKindMethodInfo(method_name, WordsAnalyseKindMethodType.instance_method);
+                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(''), WordsAnalyseKindMethodType.instance_method);
                     method.line_number = begin_line;
                     class_info.method_list.push(method);
                 }
@@ -888,7 +941,7 @@ class WordAnalyseFileInfo {
         this.skip_to_useful_char(data);
     }
     check_words_is_system_keywords(element) {
-        if (element === 'const' || element === '__kindof' || element.startsWith('API_AVAILABLE(') || element.startsWith('API_UNAVAILABLE(') || element.startsWith('API_DEPRECATED_WITH_REPLACEMENT(') || element.startsWith('ios(') || element.startsWith('visionos(') || element.startsWith('NS_SWIFT_NAME(') || element === '_Nullable' || element === '_Nonnull' || element === '__nonnull' || element === '__nullable' || element.startsWith('MTR_DEPRECATED(') || element.startsWith('macos(') || element.startsWith('tvos(') || element.startsWith('watchos(') || element.startsWith('NS_REFINED_FOR_SWIFT') || element.startsWith('API_DEPRECATED(') || element.startsWith('__WATCHOS_UNAVAILABLE') || element.startsWith('__IOS_AVAILABLE(') || element.startsWith('__WATCHOS_AVAILABLE(') || element.startsWith('CF_RETURNS_NOT_RETAINED') || element.startsWith('NS_RETURNS_INNER_POINTER') || element.startsWith('MTR_AVAILABLE(') || element.startsWith('__IOS_UNAVAILABLE') || element.startsWith('UI_APPEARANCE_SELECTOR') || element.startsWith('UIKIT_AVAILABLE_TVOS_ONLY(') || element.startsWith('NS_SWIFT_UI_ACTOR') || element.startsWith('__WATCHOS_PROHIBITED') || element.startsWith('NS_AVAILABLE_IOS(') || element.startsWith('MP_API(') || element === 'NS_SWIFT_NONISOLATED' || element === '__TVOS_PROHIBITED' || element.startsWith('__TVOS_AVAILABLE(') || element === 'API_DEPRECATED_WITH_REPLACEMENT' || element === 'NS_UNAVAILABLE' || element === 'MTR_PROVISIONALLY_AVAILABLE' || element === 'NS_SWIFT_SENDABLE' || element.startsWith('IC_AVAILABLE(') || element.startsWith('IC_UNAVAILABLE(') || element === 'NS_ASSUME_NONNULL_END' || element === 'NS_ASSUME_NONNULL_BEGIN') return true;
+        if (element === 'const' || element === '__kindof' || element.startsWith('API_AVAILABLE(') || element.startsWith('API_UNAVAILABLE(') || element.startsWith('API_DEPRECATED_WITH_REPLACEMENT(') || element.startsWith('ios(') || element.startsWith('visionos(') || element.startsWith('NS_SWIFT_NAME(') || element === '_Nullable' || element === '_Nonnull' || element === '__nonnull' || element === '__nullable' || element.startsWith('MTR_DEPRECATED(') || element.startsWith('macos(') || element.startsWith('tvos(') || element.startsWith('watchos(') || element.startsWith('NS_REFINED_FOR_SWIFT') || element.startsWith('API_DEPRECATED(') || element.startsWith('__WATCHOS_UNAVAILABLE') || element.startsWith('__IOS_AVAILABLE(') || element.startsWith('__WATCHOS_AVAILABLE(') || element.startsWith('CF_RETURNS_NOT_RETAINED') || element.startsWith('NS_RETURNS_INNER_POINTER') || element.startsWith('MTR_AVAILABLE(') || element.startsWith('__IOS_UNAVAILABLE') || element.startsWith('UI_APPEARANCE_SELECTOR') || element.startsWith('UIKIT_AVAILABLE_TVOS_ONLY(') || element.startsWith('NS_SWIFT_UI_ACTOR') || element.startsWith('__WATCHOS_PROHIBITED') || element.startsWith('NS_AVAILABLE_IOS(') || element.startsWith('MP_API(') || element === 'NS_SWIFT_NONISOLATED' || element === '__TVOS_PROHIBITED' || element.startsWith('__TVOS_AVAILABLE(') || element === 'API_DEPRECATED_WITH_REPLACEMENT' || element === 'NS_UNAVAILABLE' || element === 'MTR_PROVISIONALLY_AVAILABLE' || element === 'NS_SWIFT_SENDABLE' || element.startsWith('IC_AVAILABLE(') || element.startsWith('IC_UNAVAILABLE(') || element === 'NS_ASSUME_NONNULL_END' || element === 'NS_ASSUME_NONNULL_BEGIN' || element === 'DISPATCH_ASSUME_NONNULL_BEGIN' || element === "DISPATCH_ASSUME_ABI_SINGLE_BEGIN" || element.startsWith("DISPATCH_SWIFT_UNAVAILABLE(") || element.startsWith('NS_HEADER_AUDIT_BEGIN(') || element.startsWith('DISPATCH_') || element === '__BEGIN_DECLS') return true;
         return false;
     }
     begin_analyse_method_remove_keywords(method_name) {
@@ -1431,18 +1484,29 @@ class WordAnalyseInfo {
 
 function checkMatchResult(vscode, file_path, words, result_dic) {
     words = words.toLowerCase();
-    console.log(words);
     let result_list = [];
     const keys = Object.keys(result_dic);
     let unique_dic = {};
     for (const key of keys) {
+        if (file_path !== key && key.endsWith('.m')) {
+            continue;
+        }
+        let file_parse = path.parse(key);
+        let file_key = file_parse.dir;
+        if (file_parse.base.indexOf('.') != -1) {
+            file_key += file_parse.base.split('.')[0];
+        } else {
+            file_key += file_parse.base;
+        }
+        
         let file_info = result_dic[key];
+        if (!file_info.usefulKind) continue;
         file_info.usefulKind.forEach(element => {
             if (element.kindType == WordsAnalyseKindType.define) {
                 if (file_info.is_system == true) {
                     return;
                 }
-                const unique_key = element.defineName;
+                const unique_key = element.defineName + file_key;
                 if (unique_dic[unique_key]) {
                     return;
                 }
@@ -1452,10 +1516,10 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                         new vscode.CompletionItem(element.defineName, vscode.CompletionItemKind.Constant)
                     )
                 }
-            } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === file_info) || element.kind_type == WordsAnalyseKindType.struct) {
+            } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === key) || element.kind_type == WordsAnalyseKindType.struct) {
                 
                 if (element.class_name.toLowerCase().indexOf(words) != -1) {
-                    const unique_key = element.class_name;
+                    const unique_key = element.class_name + file_key;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1482,9 +1546,9 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                 }
                 element.method_list.forEach(method => {
                     if (method.method_name.toLowerCase().indexOf(words) != -1) {
-                        let unique_key = element.class_name + method.method_name;
+                        let unique_key = element.class_name + method.method_name + file_key;
                         if (element.extension_name && element.extension_name.length > 0) {
-                            unique_key = element.class_name + element.extension_name + method.method_name;
+                            unique_key = element.class_name + element.extension_name + method.method_name + file_key;
                         }
                         if (unique_dic[unique_key]) {
                             return;
@@ -1509,14 +1573,14 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                     }
                 });
                 element.property_list.forEach(proper => {
-                    if (proper.proper_other_list.length == 0) {
+                    if (!proper.proper_other_list || proper.proper_other_list.length == 0) {
                         return;
                     }
                     const temp = proper.proper_other_list[proper.proper_other_list.length-1];
                     if (temp.toLowerCase().indexOf(words) != -1 || temp.toLowerCase().indexOf('*' + words) != -1) {
-                        let unique_key = element.class_name + temp;
+                        let unique_key = element.class_name + temp + file_key;
                         if (element.extension_name && element.extension_name.length > 0) {
-                            unique_key = element.class_name + element.extension_name + temp;
+                            unique_key = element.class_name + element.extension_name + temp + file_key;
                         }
                         if (unique_dic[unique_key]) {
                             return;
@@ -1541,7 +1605,7 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                 });
             } else if (element.kindType == WordsAnalyseKindType.enum) {
                 if (element.enum_name.toLowerCase().indexOf(words) != -1) {
-                    const unique_key = element.enum_name;
+                    const unique_key = element.enum_name + file_key;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1554,7 +1618,7 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                 }
                 element.enum_item_list.forEach(enum_item => {
                     if (enum_item.toLowerCase().indexOf(words) != -1) {
-                        const unique_key = element.enum_name + enum_item;
+                        const unique_key = element.enum_name + enum_item + file_key;
                         if (unique_dic[unique_key]) {
                             return;
                         }
@@ -1568,7 +1632,7 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                 });
             } else if (element.kindType == WordsAnalyseKindType.c_method) {
                 if (element.method_keyword.toLowerCase().indexOf(words) != -1) {
-                    let unique_key = element.method_name;
+                    let unique_key = element.method_name + file_key;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1608,12 +1672,25 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
     let unique_dic = {};
     for (const key of keys) {
         let file_info = result_dic[key];
+        if (file_info.file_name && file_info.file_name === words) {
+            const unique_key = file_info.file_name;
+            if (unique_dic[unique_key]) {
+                continue;
+            }
+            unique_dic[unique_key] = "1";
+            result_list.push(
+                {
+                    filePath:key,
+                    label: file_info.file_name,
+                    jumpTip: "文件：" + file_info.file_path,
+                    lineNumber:0
+                }
+            )
+        }
+        if (!file_info || !file_info.usefulKind) continue;
         file_info.usefulKind.forEach(element => {
             if (element.kindType == WordsAnalyseKindType.define) {
-                if (file_info.is_system == true) {
-                    return;
-                }
-                const unique_key = element.defineName;
+                const unique_key = element.defineName + key + element.line_number;
                 if (unique_dic[unique_key]) {
                     return;
                 }
@@ -1623,18 +1700,18 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                         {
                             filePath:key,
                             label: element.defineName,
-                            jumpTip: "宏定义：" + element.defineName,
+                            jumpTip: "宏定义：" + key,
                             lineNumber:element.line_number
                         }
                     )
                 }
-            } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === file_info) || element.kind_type == WordsAnalyseKindType.struct) {
+            } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === key) || element.kind_type == WordsAnalyseKindType.struct) {
                 let jumpTip = element.class_name;
                 if (element.extension_name && element.extension_name.length > 0) {
                     jumpTip = element.class_name + "(" + element.extension_name + ")";
                 }
                 if (element.class_name === words) {
-                    const unique_key = element.class_name;
+                    const unique_key = element.class_name + key + element.line_number;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1649,10 +1726,10 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                     )
                 }
                 element.method_list.forEach(method => {
-                    if (method.method_name.indexOf(words) != -1) {
-                        let unique_key = element.class_name + method.method_name;
+                    if (method.snippet_method_name.indexOf(words) != -1) {
+                        let unique_key = element.class_name + method.method_name + key + element.line_number;
                         if (element.extension_name && element.extension_name.length > 0) {
-                            unique_key = element.class_name + element.extension_name + method.method_name;
+                            unique_key = element.class_name + element.extension_name + method.method_name + key + element.line_number;
                         }
                         if (unique_dic[unique_key]) {
                             return;
@@ -1669,14 +1746,14 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                     }
                 });
                 element.property_list.forEach(proper => {
-                    if (proper.proper_other_list.length == 0) {
+                    if (!proper.proper_other_list || proper.proper_other_list.length == 0) {
                         return;
                     }
                     const temp = proper.proper_other_list[proper.proper_other_list.length-1];
                     if (temp === words || temp === ('*' + words)) {
-                        let unique_key = element.class_name + temp;
+                        let unique_key = element.class_name + temp + key + element.line_number;
                         if (element.extension_name && element.extension_name.length > 0) {
-                            unique_key = element.class_name + element.extension_name + temp;
+                            unique_key = element.class_name + element.extension_name + temp + key + element.line_number;
                         }
                         if (unique_dic[unique_key]) {
                             return;
@@ -1694,7 +1771,7 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                 });
             } else if (element.kindType == WordsAnalyseKindType.enum) {
                 if (element.enum_name === words) {
-                    const unique_key = element.enum_name;
+                    const unique_key = element.enum_name + key + element.line_number;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1710,7 +1787,7 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                 }
                 element.enum_item_list.forEach(enum_item => {
                     if (enum_item === words) {
-                        const unique_key = element.enum_name + enum_item;
+                        const unique_key = element.enum_name + enum_item + key + element.line_number;
                         if (unique_dic[unique_key]) {
                             return;
                         }
@@ -1726,8 +1803,8 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                     }
                 });
             } else if (element.kindType == WordsAnalyseKindType.c_method) {
-                if (element.method_keyword.toLowerCase().indexOf(words) != -1) {
-                    let unique_key = element.snnipet_word;
+                if (element.method_keyword === words) {
+                    let unique_key = element.snnipet_word + key + element.line_number;
                     if (unique_dic[unique_key]) {
                         return;
                     }
@@ -1736,7 +1813,7 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                         {
                             filePath:key,
                             label:element.method_keyword,
-                            jumpTip: "C:" + element.method_name,
+                            jumpTip: key,
                             lineNumber:element.line_number
                         }
                     )

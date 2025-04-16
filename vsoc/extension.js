@@ -116,21 +116,42 @@ function activate(context) {
 			const curr_line = position.line;
 			const line = document.lineAt(curr_line);
 			const lineText = line.text;
+			let isImport = (lineText.startsWith("#import") || lineText.startsWith("#include"));
 			const length = lineText.length;
 			let temp_index = position.character;
 			let temp_words = "";
-			while (temp_index >= 0) {
-				const char = lineText[temp_index];
-				temp_index--;
-				if (char === '(' || char === '{' || checkIsWhiteSpace(char) || !isAlphaNumeric(char)) break;
-				temp_words = char + temp_words;
+			if (isImport) {
+				while (temp_index >= 0) {
+					const char = lineText[temp_index];
+					temp_index--;
+					if (char !== "+" && char !== "." && !isAlphaNumeric(char)) break;
+					temp_words = char + temp_words;
+				}
+				temp_index = position.character + 1;
+				while (temp_index < lineText.length) {
+					const char = lineText[temp_index];
+					temp_index++;
+					if (char !== "+" && char !== "." && !isAlphaNumeric(char)) break;
+					temp_words += char;
+				}
+			} else {
+				while (temp_index >= 0) {
+					const char = lineText[temp_index];
+					temp_index--;
+					if (!isAlphaNumeric(char) && char !== '_') break;
+					temp_words = char + temp_words;
+				}
+				temp_index = position.character + 1;
+				while (temp_index < lineText.length) {
+					const char = lineText[temp_index];
+					temp_index++;
+					if (!isAlphaNumeric(char) && char !== '_') break;
+					temp_words += char;
+				}
 			}
-			temp_index = position.character + 1;
-			while (temp_index < lineText.length) {
-				const char = lineText[temp_index];
-				temp_index++;
-				if (char === '(' || char === '{' || checkIsWhiteSpace(char) || !isAlphaNumeric(char)) break;
-				temp_words += char;
+			if (temp_words.length == 0) {
+				vscode.window.showInformationMessage('未找到匹配结果。');
+				return;
 			}
 			const find_list = copy_headers.findMatchResultPosition(vscode, document.fileName, temp_words, result_dic);
 			if (find_list.length == 0) {
