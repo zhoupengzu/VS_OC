@@ -1,8 +1,8 @@
 # VSCode Extension
-vsoc_lsp/node_modules/
-vsoc_lsp/out/
-vsoc_lsp/.vscode-test/
-vsoc_lsp/*.vsix
+vsoc-lsp/node_modules/
+vsoc-lsp/out/
+vsoc-lsp/.vscode-test/
+vsoc-lsp/*.vsix
 
 # General
 .DS_Store
