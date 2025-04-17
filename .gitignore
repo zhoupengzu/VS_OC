@@ -11,6 +11,7 @@ vsoc_lsp/*.vsix
 .env.development.local
 .env.test.local
 .env.production.local
+.specstory
 
 # Logs
 logs
