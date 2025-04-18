@@ -67,18 +67,6 @@ function activate(context) {
 			// 获取当前输入字符的前缀
 			const currentPrefix = lineText.substring(0, position.character);
 			return checkMatchResult(currentPrefix, document.fileName);
-
-			// console.log('当前输入的字符:', currentPrefix);
-			// const completionItems = [
-				// new vscode.CompletionItem('consoleLogxxx', vscode.CompletionItemKind.Function),
-				// new vscode.CompletionItem('alertMessage', vscode.CompletionItemKind.Function),
-			// 	new vscode.CompletionItem('myVariable', vscode.CompletionItemKind.Variable)
-			// ];
-			// // 设置自定义提示项的 sortText，让它们排在最前面
-			// completionItems.forEach((item, index) => {
-			// 	item.sortText = `0${index}`;
-			// });
-			// return completionItems;
 		}
 	}));
 	const watcher = vscode.workspace.createFileSystemWatcher('**/*');
@@ -168,7 +156,20 @@ function activate(context) {
 					lineNumber: match.lineNumber
 				};
 			});
-	
+			if (items.length == 1) {
+				const selectedItem = items[0];
+				const fileUri = vscode.Uri.file(selectedItem.filePath);
+					vscode.workspace.openTextDocument(fileUri)
+					   .then(doc => {
+							const position = new vscode.Position(selectedItem.lineNumber, 0);
+							const selection = new vscode.Selection(position, position);
+							return vscode.window.showTextDocument(doc, {
+								selection: selection,
+								preview: false
+							});
+						})
+				return;
+			}
 			vscode.window.showQuickPick(items, {
 				placeHolder: '请选择要跳转的位置'
 			}).then((selectedItem)=> {

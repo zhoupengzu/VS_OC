@@ -123,6 +123,7 @@ class WordsAnalyseKindClassInfo extends WordsAnalyseKindBaseInfo {
         this.var_list = [];
         this.property_list = [];
         this.method_list = [];
+        this.is_extension = false;
     }
     print_description() {
         console.log(this.class_name);
@@ -166,30 +167,29 @@ class WordsAnalyseKindMethodInfo extends WordsAnalyseKindBaseInfo {
     begin_analyse_method_to_snnipets(method_name) {
         if (method_name.length > 0) {
             let method_snippets = "";
-            let snnips_list = method_name.split(':');
-            if (snnips_list.length == 1) {
-                this.snippet_method_name = method_name.replace(' ', '');
-                return;
-            }
-            snnips_list = snnips_list.slice(0, snnips_list.length - 1);
+            let position = 0;
+            let brackets = 0;
             let index = 0;
-            for (let element of snnips_list) {
-                element = element.replace(' ', '');
-                if (index == 0) {
-                    method_snippets = method_snippets + element + ":$" + (index + 1);
-                    if (index < snnips_list.length - 1) {
-                        method_snippets += " ";
+            while (position < method_name.length) {
+                const char = method_name[position];
+                position++;
+                if (char === ':') {
+                    brackets = 0; 
+                    method_snippets += ":$" + (index + 1);
+                    index++;
+                    while (position < method_name.length) {
+                        const temp = method_name[position];
+                        position++;
+                        if (checkIsWhiteSpace(temp) && brackets == 0) {
+                            method_snippets += " ";
+                            break;
+                        }
+                        if (temp === '(') brackets++;
+                        if (temp === ')') brackets--;
                     }
-                } else if (index == snnips_list.length - 1) {
-                    
-                } else {
-                    let tempSepList = element.split(' ');
-                    method_snippets = method_snippets + tempSepList[tempSepList.length - 1] + ":$" + (index + 1);
-                    if (index < snnips_list.length - 2) {
-                        method_snippets += " ";
-                    }
+                    continue;
                 }
-                index++;
+                method_snippets += char;
             }
             this.snippet_method_name = method_snippets;
         }
@@ -911,18 +911,18 @@ class WordAnalyseFileInfo {
                     }
                     temp_name += char;
                     if (char === '(' || char === '<') round_brackets++;
-                    if (char === ')' || char === '>') round_brackets++;
+                    if (char === ')' || char === '>') round_brackets--;
                 }
                 if (temp_name.length > 0 && this.check_words_is_system_keywords(temp_name) == false) {
                     method_name_list.push(temp_name);
                 }
                 this.skip_to_useful_char(data);
                 if (char === '+') {
-                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(''), WordsAnalyseKindMethodType.class_method);
+                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(' '), WordsAnalyseKindMethodType.class_method);
                     method.line_number = begin_line;
                     class_info.method_list.push(method);
                 } else {
-                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(''), WordsAnalyseKindMethodType.instance_method);
+                    let method = new WordsAnalyseKindMethodInfo(method_name_list.join(' '), WordsAnalyseKindMethodType.instance_method);
                     method.line_number = begin_line;
                     class_info.method_list.push(method);
                 }
@@ -1163,7 +1163,9 @@ class WordAnalyseFileInfo {
         }
         if (this.position >= data.length) return;
         let extension_name = '';
+        let isExtension = false;
         if (data[this.position] === '(') { // 分类
+            isExtension = true;
             this.position++;
             this.skip_to_useful_char(data);
             while(this.position < data.length) {
@@ -1179,6 +1181,7 @@ class WordAnalyseFileInfo {
         }
         let class_info = new WordsAnalyseKindClassInfo(class_name, WordsAnalyseKindType.class_implementation);
         class_info.line_number = begin_line;
+        class_info.is_extension = isExtension;
         this.usefulKind.push(class_info);
         if (extension_name.length > 0) {
             class_info.extension_name = extension_name;
@@ -1592,7 +1595,9 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                         } else if (element.kindType == WordsAnalyseKindType.struct) {
                             proper_info.detail = "结构体:" + element.class_name;
                         } else {
-                            if (element.extension_name && element.extension_name.length > 0) {
+                            if (element.is_extension) {
+                                proper_info.detail = "扩展：" + element.class_name + "( )";
+                            } else if (element.extension_name && element.extension_name.length > 0) {
                                 proper_info.detail = "分类：" + element.class_name + "(" + element.extension_name + ")";
                             } else {
                                 proper_info.detail = "类：" + element.class_name;
@@ -1707,7 +1712,9 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                 }
             } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === key) || element.kind_type == WordsAnalyseKindType.struct) {
                 let jumpTip = element.class_name;
-                if (element.extension_name && element.extension_name.length > 0) {
+                if (element.is_extension) {
+                    jumpTip = element.class_name + "( )";
+                } else if (element.extension_name && element.extension_name.length > 0) {
                     jumpTip = element.class_name + "(" + element.extension_name + ")";
                 }
                 if (element.class_name === words) {
