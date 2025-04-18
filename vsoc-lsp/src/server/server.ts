@@ -1,8 +1,6 @@
 import {
   createConnection,
   TextDocuments,
-  Diagnostic,
-  DiagnosticSeverity,
   ProposedFeatures,
   InitializeParams,
   DidChangeConfigurationNotification,
@@ -10,7 +8,9 @@ import {
   CompletionItemKind,
   TextDocumentPositionParams,
   TextDocumentSyncKind,
-  InitializeResult
+  InitializeResult,
+  Hover,
+  MarkupKind
 } from 'vscode-languageserver/node';
 
 import {
@@ -52,7 +52,8 @@ connection.onInitialize((params: InitializeParams) => {
       completionProvider: {
         resolveProvider: true,
         triggerCharacters: ['.']
-      }
+      },
+      hoverProvider: true,
     }
   };
 
@@ -102,25 +103,29 @@ connection.onDidChangeConfiguration(change => {
       (change.settings.vsocLanguageServer || defaultSettings)
     );
   }
-
-  // Revalidate all open text documents
-  documents.all().forEach(validateTextDocument);
 });
 
-function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
-  if (!hasConfigurationCapability) {
-    return Promise.resolve(globalSettings);
-  }
-  let result = documentSettings.get(resource);
-  if (!result) {
-    result = connection.workspace.getConfiguration({
-      scopeUri: resource,
-      section: 'vsocLanguageServer'
+// 悬停提示处理逻辑
+connection.onHover((params: TextDocumentPositionParams): Hover | null => {
+  const document = documents.get(params.textDocument.uri);
+  if (document) {
+    const position = params.position;
+    const line = document.getText({
+      start: { line: position.line, character: 0 },
+      end: { line: position.line, character: Number.MAX_VALUE }
     });
-    documentSettings.set(resource, result);
+    const word = line.slice(0, position.character).split(/\s+/).pop();
+    if (word) {
+      return {
+        contents: {
+          kind: MarkupKind.PlainText,
+          value: `这是关于单词 "${word}" 的悬停提示信息。`
+        }
+      };
+    }
   }
-  return result;
-}
+  return null;
+});
 
 // Only keep settings for open documents
 documents.onDidClose(e => {
@@ -130,50 +135,8 @@ documents.onDidClose(e => {
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
 documents.onDidChangeContent(change => {
-  validateTextDocument(change.document);
+  
 });
-
-async function validateTextDocument(textDocument: TextDocument): Promise<void> {
-  // In this simple example we get the settings for every validate run.
-  const settings = await getDocumentSettings(textDocument.uri);
-
-  // The validator creates diagnostics for all words that are not lowercase
-  const text = textDocument.getText();
-  const pattern = /\b[A-Z][a-z]*\b/g;
-  let match: RegExpExecArray | null;
-
-  const diagnostics: Diagnostic[] = [];
-  let problems = 0;
-  while ((match = pattern.exec(text)) && problems < settings.maxNumberOfProblems) {
-    problems++;
-    const diagnostic: Diagnostic = {
-      severity: DiagnosticSeverity.Warning,
-      range: {
-        start: textDocument.positionAt(match.index),
-        end: textDocument.positionAt(match.index + match[0].length)
-      },
-      message: `${match[0]} should be lowercase.`,
-      source: 'VSOC LSP'
-    };
-    
-    if (hasDiagnosticRelatedInformationCapability) {
-      diagnostic.relatedInformation = [
-        {
-          location: {
-            uri: textDocument.uri,
-            range: Object.assign({}, diagnostic.range)
-          },
-          message: 'Capitalized word detected'
-        }
-      ];
-    }
-    
-    diagnostics.push(diagnostic);
-  }
-
-  // Send the computed diagnostics to VSCode.
-  connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
-}
 
 connection.onDidChangeWatchedFiles(_change => {
   // Monitored files have changed in VSCode
