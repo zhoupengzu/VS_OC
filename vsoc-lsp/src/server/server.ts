@@ -179,6 +179,16 @@ connection.onCompletionResolve(
   }
 );
 
+connection.onRequest('custom/request', (params: any) => {
+  // Handle the custom request here
+  // You can access the parameters and perform any necessary actions
+  // For example, you can return a response
+  return {
+    message: 'Custom request received',
+    params: params
+  };
+});
+
 // Make the text document manager listen on the connection
 // for open, change and close text document events
 documents.listen(connection);

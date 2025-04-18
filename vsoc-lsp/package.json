@@ -16,6 +16,10 @@
   "contributes": {
     "languages": [],
     "commands": [
+      {
+        "command": "Helloworld",
+        "title": "Hello World"
+      }
     ]
   },
   "scripts": {

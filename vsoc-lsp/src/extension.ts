@@ -52,6 +52,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Start the client. This will also launch the server
   client.start();
+  context.subscriptions.push(
+    vscode.commands.registerCommand('Helloworld', () => {
+      client.sendRequest('custom/request', { text: 'Hello world!' }).then(
+        (response) => {
+          console.log('Response from server:', response);
+        },
+        (error) => {
+          console.error('Error from server:', error);
+        }
+      );
+    })
+  );
 }
 
 export function deactivate(): Thenable<void> | undefined {
