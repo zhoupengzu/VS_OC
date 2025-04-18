@@ -1595,10 +1595,10 @@ function checkMatchResult(vscode, file_path, words, result_dic) {
                         } else if (element.kindType == WordsAnalyseKindType.struct) {
                             proper_info.detail = "结构体:" + element.class_name;
                         } else {
-                            if (element.is_extension) {
-                                proper_info.detail = "扩展：" + element.class_name + "( )";
-                            } else if (element.extension_name && element.extension_name.length > 0) {
+                            if (element.extension_name && element.extension_name.length > 0) {
                                 proper_info.detail = "分类：" + element.class_name + "(" + element.extension_name + ")";
+                            } else if (element.is_extension) {
+                                proper_info.detail = "扩展：" + element.class_name + "( )";
                             } else {
                                 proper_info.detail = "类：" + element.class_name;
                             }
@@ -1712,10 +1712,10 @@ function findMatchResultPosition(vscode, file_path, words, result_dic) {
                 }
             } else if (element.kindType == WordsAnalyseKindType.class || element.kindType == WordsAnalyseKindType.protocol || (element.kindType == WordsAnalyseKindType.class_implementation && file_path === key) || element.kind_type == WordsAnalyseKindType.struct) {
                 let jumpTip = element.class_name;
-                if (element.is_extension) {
-                    jumpTip = element.class_name + "( )";
-                } else if (element.extension_name && element.extension_name.length > 0) {
+                if (element.extension_name && element.extension_name.length > 0) {
                     jumpTip = element.class_name + "(" + element.extension_name + ")";
+                } else if (element.is_extension) {
+                    jumpTip = element.class_name + "( )";
                 }
                 if (element.class_name === words) {
                     const unique_key = element.class_name + key + element.line_number;
